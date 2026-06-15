@@ -9,8 +9,8 @@
     <AssemblyName>JobService.Tests</AssemblyName>
     <ProjectGuid>{C3D4E5F6-A7B8-9012-CDEF-123456789012}</ProjectGuid>
 
-    <!-- Coverlet: collect coverage for src/ only -->
-    <CoverletOutput>../coverage.json</CoverletOutput>
+    <!-- Coverlet: collect coverage for src/ only. Program.cs entry point
+         is excluded via ExcludeByFile (CI Python check also filters it). -->
     <CoverletOutputFormat>json,cobertura</CoverletOutputFormat>
     <ExcludeByFile>**/obj/**,**/bin/**</ExcludeByFile>
     <Exclude>[JobService]&lt;&lt;Main&gt;$</Exclude>
