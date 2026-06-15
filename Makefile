@@ -1,4 +1,49 @@
-.PHONY: infra-up infra-down infra-clean dev db-migrate db-seed metrics-up metrics-stop metrics-down test coverage setup lint generate migration db-update sonar
+.PHONY: help dev test coverage lint typecheck check build docker run infra-up infra-down clean sonar
+
+help:
+	@echo "Job Service C# — available targets:"
+	@echo "  make dev          Run with file watcher (hot reload)"
+	@echo "  make test         Run unit tests"
+	@echo "  make coverage     Run tests with coverage report"
+	@echo "  make lint         Lint C# code (dotnet format --verify-no-changes)"
+	@echo "  make typecheck    Run mypy-equivalent (no-op; C# is compiled)"
+	@echo "  make check        Run lint + test + coverage gate"
+	@echo "  make build        Build the project (Release)"
+	@echo "  make docker       Build Docker image"
+	@echo "  make run          Run the application"
+	@echo "  make infra-up     Start SQL Server + Redis + RabbitMQ via docker compose"
+	@echo "  make infra-down   Stop the dev infrastructure"
+	@echo "  make sonar        Run SonarQube scan"
+	@echo "  make clean        Remove build artifacts"
+
+dev:
+	DOTNET_USE_POLLING_FILE_WATCHER=1 dotnet watch --project src/MageBackend.csproj run
+
+test:
+	dotnet test tests/MageBackend.Tests.csproj --logger "console;verbosity=normal"
+
+coverage:
+	dotnet test tests/MageBackend.Tests.csproj --collect:"XPlat Code Coverage" --logger "console;verbosity=minimal" --results-directory ./TestResults
+	@echo ""
+	@echo "Coverage report: tests/TestResults/*/coverage.cobertura.xml"
+
+lint:
+	dotnet format src/MageBackend.csproj --verify-no-changes --no-restore
+
+typecheck:
+	@echo "(C# is compiled; no separate typecheck step)"
+
+check: lint test coverage
+	@echo "✅ All checks passed"
+
+build:
+	dotnet build src/MageBackend.csproj -c Release
+
+docker:
+	docker build -t job-service-c-sharp:latest .
+
+run:
+	dotnet run --project src/MageBackend.csproj
 
 infra-up:
 	docker compose -f docker-compose.infra.yml up -d
@@ -6,70 +51,8 @@ infra-up:
 infra-down:
 	docker compose -f docker-compose.infra.yml down
 
-infra-clean:
-	@echo "🧹 Removendo containers e volumes (resetando banco)..."
-	docker compose -f docker-compose.infra.yml down -v
-
-dev:
-	DOTNET_USE_POLLING_FILE_WATCHER=1 dotnet watch --project src/MageBackend.csproj run
-
-db-migrate:
-	dotnet ef database update --project src/MageBackend.csproj --startup-project src/MageBackend.csproj
-
-metrics-up:
-	@echo "📈 Subindo stack de métricas (Prometheus & Grafana)..."
-	docker compose -f docker-compose.metrics.yml up -d
-
-metrics-stop:
-	@echo "🛑 Parando stack de métricas..."
-	docker compose -f docker-compose.metrics.yml stop
-
-metrics-down:
-	@echo "🗑️ Removendo stack de métricas..."
-	docker compose -f docker-compose.metrics.yml down
-
-test:
-	dotnet test tests/MageBackend.Tests.csproj -m:1
-
-coverage:
-	@echo "📊 Gerando relatório de cobertura de código..."
-	dotnet test tests/MageBackend.Tests.csproj -m:1 /p:CollectCoverage=true
-	@echo "\n--- Resumo de Cobertura ---"
-
-setup:
-	@echo "⚙️ Instalando ferramentas e hooks..."
-	dotnet tool restore
-	dotnet husky install
-	@echo "✅ Setup completo!"
-
-lint:
-	@echo "🔍 Verificando comentários // no código-fonte..."
-	@! grep -rn '[^:/]//\|^//' src/ --include='*.cs' | grep -v '///' | grep -v '://' || \
-		(echo "❌ Encontrados comentários // no código-fonte" && exit 1)
-	@echo "✅ Nenhum comentário // encontrado"
-	@echo ""
-	@echo "🎨 Executando dotnet format..."
-	dotnet format src/MageBackend.csproj --verify-no-changes
-
-generate:
-	@python3 scripts/generate_crud.py $(name)
-
-generate-storage:
-	@python3 scripts/generate_storage.py
-
-migration:
-	@if [ -z "$(name)" ]; then \
-		read -p "Enter migration name: " MIGN; \
-		if [ -z "$$MIGN" ]; then echo "❌ Migration name cannot be empty"; exit 1; fi; \
-		dotnet ef migrations add $$MIGN -p src/MageBackend.csproj; \
-	else \
-		dotnet ef migrations add $(name) -p src/MageBackend.csproj; \
-	fi
-
-db-update:
-	dotnet ef database update -p src/MageBackend.csproj
-
 sonar:
-	@echo "🔍 Rodando scan do SonarQube (análise C# + cobertura)..."
-	./scripts/sonar-scan.sh "backend-c-sharp" "backend-c-sharp"
+	./scripts/sonar-scan.sh "job-service-c-sharp" "job-service-c-sharp"
 
+clean:
+	rm -rf src/bin src/obj tests/bin tests/obj tests/TestResults

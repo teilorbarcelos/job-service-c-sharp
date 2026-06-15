@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-service-c-sharp
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=Information
+      - DATABASE_URL=Server=host.docker.internal,1433;Database=backend_c_sharp;User Id=sa;Password=${DATABASE_PASSWORD};TrustServerCertificate=True;
+      - REDIS_HOST=host.docker.internal
+      - REDIS_PORT=6379
+      - MESSAGING_ENABLED=false
+      - RABBIT_URL=amqp://guest:guest@host.docker.internal:5672/
+      - HEALTH_CHECK_CRON=*/1 * * * *
+      - HEALTH_CHECK_ENABLED=true
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

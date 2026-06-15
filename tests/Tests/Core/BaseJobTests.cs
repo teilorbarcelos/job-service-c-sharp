@@ -48,7 +48,7 @@ public class BaseJobTests
             => Task.CompletedTask;
     }
 
-    private static Logger Logger() => new LoggerConfiguration().CreateLogger();
+    private static ILogger Logger() => new LoggerConfiguration().CreateLogger();
 
     [Fact]
     public async Task RunAsync_Returns_Success_On_Handle_Completion()

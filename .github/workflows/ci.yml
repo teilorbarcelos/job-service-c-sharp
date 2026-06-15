@@ -1,88 +1,67 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ develop, main ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ develop, main ]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
 
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v4
 
-    - name: Setup .NET SDK 10.0
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
 
-    - name: Restore NuGet Packages
-      run: dotnet restore tests/MageBackend.Tests.csproj
+      - name: Restore dependencies
+        run: dotnet restore src/MageBackend.csproj
 
-    - name: Build Project
-      run: dotnet build src/MageBackend.csproj --configuration Release --no-restore
+      - name: Lint (dotnet format)
+        run: dotnet format src/MageBackend.csproj --verify-no-changes --no-restore
 
-    - name: Build Tests Project
-      run: dotnet build tests/MageBackend.Tests.csproj --configuration Debug --no-restore
+      - name: Build
+        run: dotnet build src/MageBackend.csproj --no-restore -c Release
 
-    - name: Run Integration & Unit Tests
-      env:
-        LANG: C.UTF-8
-        LC_ALL: C.UTF-8
-      run: dotnet test tests/MageBackend.Tests.csproj -m:1 --configuration Debug --no-restore
+      - name: Run tests with coverage
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: "Server=localhost,1433;Database=ci;User Id=sa;Password=Password123!;TrustServerCertificate=True;"
+          MESSAGING_ENABLED: "false"
+        run: |
+          dotnet test tests/MageBackend.Tests.csproj \
+            --no-restore \
+            --collect:"XPlat Code Coverage" \
+            --logger "console;verbosity=minimal"
 
-  sonar:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Setup Java 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '17'
-
-    - name: Setup .NET SDK 10.0
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.0.x'
-
-    - name: Cache SonarQube scanners
-      uses: actions/cache@v4
-      with:
-        path: ~/.sonar
-        key: ${{ runner.os }}-sonar-${{ github.run_id }}
-        restore-keys: |
-          ${{ runner.os }}-sonar-
-
-    - name: Install SonarScanner for .NET
-      run: dotnet tool install --global dotnet-sonarscanner
-
-    - name: Install SonarScanner CLI (Java)
-      run: |
-        mkdir -p ~/.sonar
-        if [ ! -d ~/.sonar/native-sonar-scanner/sonar-scanner-6.2.1.4610-linux-x64 ]; then
-          cd /tmp
-          wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
-          unzip -q sonar-scanner-cli-6.2.1.4610-linux-x64.zip -d ~/.sonar/native-sonar-scanner
-        fi
-
-    - name: Run SonarQube Scan
-      env:
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        LANG: C.UTF-8
-        LC_ALL: C.UTF-8
-      run: |
-        export PATH="$PATH:$HOME/.dotnet/tools"
-        ./scripts/sonar-scan.sh "backend-c-sharp" "backend-c-sharp"
+      - name: Check coverage gate (100% line+branch)
+        run: |
+          python3 - <<'PY'
+          import glob, re
+          xmls = glob.glob("tests/TestResults/*/coverage.cobertura.xml")
+          if not xmls:
+            raise SystemExit("No coverage file found")
+          with open(xmls[0]) as f:
+            data = f.read()
+          m = re.search(r'line-rate="([^"]+)"[^>]*branch-rate="([^"]+)"', data.split('</sources>')[1])
+          if not m:
+            raise SystemExit("No overall line/branch rate found")
+          lr, br = float(m.group(1)), float(m.group(2))
+          if lr < 0.999 or br < 0.999:
+            raise SystemExit(f"Coverage below 100% — lines: {lr*100:.1f}%, branches: {br*100:.1f}%")
+          print(f"✅ Coverage gate passed: lines {lr*100:.1f}%, branches {br*100:.1f}%")
+          PY

@@ -1,4 +1,5 @@
-using Serilog.Core;
+using Serilog;
+using ILogger = Serilog.ILogger;
 
 namespace JobService.Core;
 
@@ -7,7 +8,7 @@ public sealed class Scheduler : IHostedService, IDisposable
     private readonly BaseJob[] _jobs;
     private readonly ICronAdapter _cronAdapter;
     private readonly TimeSpan _executionTimeout;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
     private readonly List<Task> _supervisorTasks = new();
     private readonly Dictionary<string, bool> _runningStates = new(StringComparer.Ordinal);
@@ -20,7 +21,7 @@ public sealed class Scheduler : IHostedService, IDisposable
         IEnumerable<BaseJob> jobs,
         ICronAdapter cronAdapter,
         TimeSpan executionTimeout,
-        Logger logger)
+        ILogger logger)
         : this(jobs, cronAdapter, executionTimeout, logger, () => DateTime.UtcNow)
     {
     }
@@ -29,7 +30,7 @@ public sealed class Scheduler : IHostedService, IDisposable
         IEnumerable<BaseJob> jobs,
         ICronAdapter cronAdapter,
         TimeSpan executionTimeout,
-        Logger logger,
+        ILogger logger,
         Func<DateTime> utcNow)
     {
         _jobs = jobs?.ToArray() ?? throw new ArgumentNullException(nameof(jobs));

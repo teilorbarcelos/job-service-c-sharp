@@ -1,52 +1,16 @@
 {
-  "scripts": [
-    {
-      "name": "🛠️ Restore Packages",
-      "command": "dotnet restore src"
-    },
-    {
-      "name": "🚀 Start Development Server",
-      "command": "make dev"
-    },
-    {
-      "name": "🐳 Infrastructure: Start All (SQL Server, Redis)",
-      "command": "make infra-up"
-    },
-    {
-      "name": "🐳 Infrastructure: Remove Containers",
-      "command": "make infra-down"
-    },
-    {
-      "name": "🐳 Infrastructure: Reset (Remove Containers & Volumes)",
-      "command": "make infra-clean"
-    },
-    {
-      "name": "🗄️ Database: Run Migrations",
-      "command": "make db-migrate"
-    },
-    {
-      "name": "🧪 Run Integration Tests",
-      "command": "make test"
-    },
-    {
-      "name": "📊 Code Coverage Report",
-      "command": "make coverage"
-    },
-    {
-      "name": "✨ Generate Feature CRUD",
-      "command": "make generate"
-    },
-    {
-      "name": "🗄️ Database: Create Migration",
-      "command": "make migration"
-    },
-    {
-      "name": "🗄️ Database: Update Schema",
-      "command": "make db-update"
-    },
-    {
-      "name": "📦 Generate Storage Provider",
-      "command": "make generate-storage"
-    }
-  ]
+  "name": "job-service-c-sharp",
+  "version": "0.1.0",
+  "description": "Scheduled job runner skeleton (C# / .NET 10 Worker)",
+  "scripts": {
+    "dev": "dotnet watch --project src/MageBackend.csproj run",
+    "build": "dotnet build src/MageBackend.csproj -c Release",
+    "test": "dotnet test tests/MageBackend.Tests.csproj --logger \"console;verbosity=normal\"",
+    "coverage": "dotnet test tests/MageBackend.Tests.csproj --collect:\"XPlat Code Coverage\" --logger \"console;verbosity=minimal\"",
+    "lint": "dotnet format src/MageBackend.csproj --verify-no-changes --no-restore",
+    "check": "make check",
+    "sonar": "./scripts/sonar-scan.sh job-service-c-sharp job-service-c-sharp",
+    "infra-up": "docker compose -f docker-compose.infra.yml up -d",
+    "infra-down": "docker compose -f docker-compose.infra.yml down"
+  }
 }

@@ -37,7 +37,7 @@ public class SchedulerTests
         }
     }
 
-    private static Logger Logger() => new LoggerConfiguration().CreateLogger();
+    private static ILogger Logger() => new LoggerConfiguration().CreateLogger();
 
     private static ICronAdapter MockCronReturning(DateTime nextOccurrence)
     {

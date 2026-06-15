@@ -1,16 +1,17 @@
 using Microsoft.Extensions.Hosting;
-using Serilog.Core;
+using Serilog;
+using ILogger = Serilog.ILogger;
 
 namespace JobService.Shared.Utils;
 
 public sealed class ShutdownHandler
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly TimeSpan _timeout;
     private readonly Func<Task> _cleanup;
 
-    public ShutdownHandler(Logger logger, IHostApplicationLifetime lifetime, TimeSpan timeout, Func<Task> cleanup)
+    public ShutdownHandler(ILogger logger, IHostApplicationLifetime lifetime, TimeSpan timeout, Func<Task> cleanup)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));

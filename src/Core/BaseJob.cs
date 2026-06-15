@@ -1,5 +1,6 @@
 using System.Diagnostics;
-using Serilog.Core;
+using Serilog;
+using ILogger = Serilog.ILogger;
 
 namespace JobService.Core;
 
@@ -12,7 +13,7 @@ public abstract class BaseJob
 
     public abstract Task HandleAsync(JobContext context, CancellationToken cancellationToken);
 
-    public async Task<JobResult> RunAsync(Logger logger, CancellationToken cancellationToken)
+    public async Task<JobResult> RunAsync(ILogger logger, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var context = new JobContext { Logger = logger };
