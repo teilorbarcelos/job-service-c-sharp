@@ -29,13 +29,15 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore src/MageBackend.csproj
+        run: dotnet restore tests/MageBackend.Tests.csproj
 
       - name: Lint (dotnet format)
         run: dotnet format src/MageBackend.csproj --verify-no-changes --no-restore
 
       - name: Build
-        run: dotnet build src/MageBackend.csproj --no-restore -c Release
+        run: |
+          dotnet build src/MageBackend.csproj --no-restore -c Release
+          dotnet build tests/MageBackend.Tests.csproj --no-restore -c Debug
 
       - name: Run tests with coverage
         env:
