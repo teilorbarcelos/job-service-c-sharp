@@ -108,41 +108,16 @@ public sealed class Scheduler : IHostedService, IDisposable
             }
             if (cancellationToken.IsCancellationRequested) return;
 
-            bool shouldSkip;
             lock (_stateLock)
             {
-                if (_runningStates.TryGetValue(job.Name, out var isRunning) && isRunning)
-                {
-                    shouldSkip = true;
-                }
-                else
-                {
-                    _runningStates[job.Name] = true;
-                    shouldSkip = false;
-                }
-            }
-            if (shouldSkip)
-            {
-                _logger.Warning("Job {JobName} is still running, skipping this tick", job.Name);
-                continue;
+                _runningStates[job.Name] = true;
             }
 
             try
             {
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeoutCts.CancelAfter(_executionTimeout);
-                try
-                {
-                    await job.RunAsync(_logger, timeoutCts.Token);
-                }
-                catch (OperationCanceledException) when (
-                    timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-                {
-                    _logger.Warning(
-                        "Job {JobName} exceeded timeout of {TimeoutSeconds}s",
-                        job.Name,
-                        _executionTimeout.TotalSeconds);
-                }
+                await job.RunAsync(_logger, timeoutCts.Token);
             }
             finally
             {

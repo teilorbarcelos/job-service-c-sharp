@@ -21,12 +21,6 @@ public sealed class ShutdownHandler
     public void Register()
     {
         AppDomain.CurrentDomain.ProcessExit += (_, _) => HandleAsync("ProcessExit").GetAwaiter().GetResult();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            HandleAsync("CancelKeyPress").GetAwaiter().GetResult();
-            _lifetime.StopApplication();
-        };
         _lifetime.ApplicationStopping.Register(() => HandleAsync("ApplicationStopping").GetAwaiter().GetResult());
     }
 

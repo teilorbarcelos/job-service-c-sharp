@@ -5,7 +5,7 @@ using RabbitMQ.Client;
 
 namespace JobService.Infrastructure.Messaging;
 
-public sealed class RabbitMqProvider : IDisposable
+public sealed class RabbitMqProvider : IRabbitMqProvider
 {
     private readonly IConnectionFactory _factory;
     private readonly ILogger<RabbitMqProvider> _logger;

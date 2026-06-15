@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace JobService.Infrastructure.Database;
 
-public sealed class SqlProvider : IDisposable
+public class SqlProvider : ISqlProvider
 {
     private readonly string _connectionString;
     private readonly int _commandTimeoutSeconds;
@@ -16,16 +16,19 @@ public sealed class SqlProvider : IDisposable
     public SqlProvider(IOptions<AppSettings> options, ILogger<SqlProvider> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
-        _connectionString = options.Value.DatabaseUrl
-            ?? throw new ConfigurationError("DATABASE_URL is not configured");
+        _connectionString = options.Value.DatabaseUrl;
+        if (string.IsNullOrWhiteSpace(_connectionString))
+            throw new ConfigurationError("DATABASE_URL is not configured");
         _commandTimeoutSeconds = options.Value.DatabaseCommandTimeoutSeconds;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+    protected virtual SqlConnection CreateConnection() => new SqlConnection(_connectionString);
+
+    public virtual async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(SqlProvider));
-        var conn = new SqlConnection(_connectionString);
+        var conn = CreateConnection();
         try
         {
             await conn.OpenAsync(cancellationToken);
@@ -38,7 +41,7 @@ public sealed class SqlProvider : IDisposable
         }
     }
 
-    public async Task<bool> PingAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<bool> PingAsync(CancellationToken cancellationToken = default)
     {
         try
         {

@@ -9,15 +9,15 @@ namespace JobService.Infrastructure.Health;
 
 public sealed class DefaultHealthChecker : IHealthChecker
 {
-    private readonly SqlProvider _sql;
-    private readonly RedisProvider _redis;
-    private readonly RabbitMqProvider _rabbit;
+    private readonly ISqlProvider _sql;
+    private readonly IRedisProvider _redis;
+    private readonly IRabbitMqProvider _rabbit;
     private readonly AppSettings _settings;
 
     public DefaultHealthChecker(
-        SqlProvider sql,
-        RedisProvider redis,
-        RabbitMqProvider rabbit,
+        ISqlProvider sql,
+        IRedisProvider redis,
+        IRabbitMqProvider rabbit,
         IOptions<AppSettings> options)
     {
         _sql = sql ?? throw new ArgumentNullException(nameof(sql));

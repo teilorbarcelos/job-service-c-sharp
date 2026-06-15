@@ -4,7 +4,7 @@ using StackExchange.Redis;
 
 namespace JobService.Infrastructure.Redis;
 
-public sealed class RedisProvider : IDisposable
+public class RedisProvider : IRedisProvider
 {
     private readonly Lazy<ConnectionMultiplexer> _connection;
     private readonly ILogger<RedisProvider> _logger;
@@ -45,9 +45,9 @@ public sealed class RedisProvider : IDisposable
         return options;
     }
 
-    public IDatabase GetDatabase() => _connection.Value.GetDatabase();
+    public virtual IDatabase GetDatabase() => _connection.Value.GetDatabase();
 
-    public async Task<bool> PingAsync()
+    public virtual async Task<bool> PingAsync()
     {
         try
         {
