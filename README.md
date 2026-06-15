@@ -1,268 +1,168 @@
-# Advanced C# (ASP.NET Core) Backend API Boilerplate
+# job-service-c-sharp
 
-Arquitetura robusta, moderna e de alta performance construída com **C#**, **ASP.NET Core 10.0** e **Entity Framework Core**. Adota **Vertical Slice Architecture (VSA)** com fatias funcionais de baixo acoplamento e alta coesão.
+> Scheduled job runner skeleton for C# / .NET 10. Connects to `backend-c-sharp`
+> to consume SQL Server, Redis, and RabbitMQ.
 
----
+A clean, idiomatic boilerplate for running cron-scheduled jobs in C# — no HTTP
+layer, no auth, no audit, no PDF, no storage. Just jobs.
 
-## Tecnologias Core
+## Stack
 
-- **Runtime & SDK:** .NET 10.0
-- **Framework Web:** ASP.NET Core Web API
-- **ORM:** Entity Framework Core 10
-- **Banco de Dados:** SQL Server + Redis (cache de sessões, rate limit)
-- **Mensageria:** RabbitMQ com DLX/DLQ, retry, Publisher Confirms
-- **Documentação:** OpenAPI 3.0 via `v1/docs`
-- **Observabilidade:** OpenTelemetry (OTLP) + Prometheus + Grafana
-- **Qualidade:** SonarQube + Husky + dotnet format
-- **Testes:** xUnit + Testcontainers (SQL/Redis/RabbitMQ reais)
-- **CI/CD:** GitHub Actions
+- **.NET 10 Worker** (no ASP.NET)
+- **SQL Server** via `Microsoft.Data.SqlClient` (no EF Core)
+- **Redis** via `StackExchange.Redis`
+- **RabbitMQ** via `RabbitMQ.Client`
+- **Cron** via `Cronos`
+- **Logging** via `Serilog`
+- **Tests** via xunit + Moq + coverlet
 
----
-
-## Arquitetura
-
-### Vertical Slice Architecture (VSA)
-
-Código organizado em **Feature Slices** em `src/Features/`. Cada pasta contém todo o ciclo da funcionalidade: Controller, Command/Query DTOs, Validadores, Handlers e Mappers. Sem camadas Service/Repository genéricas.
+## Architecture
 
 ```
 src/
-├── Core/             → Primitivas de domínio e CQRS
-├── Domain/           → BaseEntity, SearchRequest
-├── Shared/           → QueryableExtensions, Cqrs, DateTimeHelper
-├── Web/              → Controllers base, Middleware, Filters
-├── Database/         → DbContext, Migrations, Entities
-├── Infrastructure/   → Auth, Messaging, Pdf, Storage, Auditing, HealthChecks, Configuration
-├── Features/         → Auth, User, Role, Feature, Product, Storage, Dashboard, AuditExplorer
-└── Migrations/       → EF Core migrations versionadas
+├── Program.cs                          # Worker bootstrap (DI + shutdown)
+├── Core/
+│   ├── BaseJob.cs                      # Abstract class (Name, Schedule, HandleAsync)
+│   ├── Scheduler.cs                    # IHostedService: cron loop + per-job timeout
+│   ├── ICronAdapter.cs                 # Cronos wrapper (testable)
+│   ├── JobContext.cs                   # Logger passed to HandleAsync
+│   ├── JobResult.cs                    # Status, DurationMs, Error
+│   └── JobStatus.cs                    # Success | Failed | Cancelled | Timeout
+├── Infrastructure/
+│   ├── Database/SqlProvider.cs         # Singleton connection factory (Microsoft.Data.SqlClient)
+│   ├── Redis/RedisProvider.cs          # Singleton ConnectionMultiplexer
+│   ├── Messaging/RabbitMqProvider.cs   # Publisher + check()
+│   └── Health/DefaultHealthChecker.cs  # SQL/Redis/Rabbit status check
+├── Jobs/
+│   ├── HealthCheckJob.cs               # Example: status a cada minuto
+│   └── RegisterJobs.cs                 # DI extension
+├── Shared/
+│   ├── Config/EnvValidator.cs          # AppSettings + env loaders
+│   ├── Errors/AppError.cs              # Hierarchy
+│   └── Utils/Logger.cs | Shutdown.cs | Signals.cs
+├── appsettings.json
+└── appsettings.Development.json
 ```
 
-### Padrões e Práticas
+## Quick start
 
-- **CQRS** com MediatR — commands e queries separados por slice
-- **FluentValidation** — validação desacoplada dos handlers
-- **Registros Imutáveis** (`record`) para DTOs de request/response
-- **Soft Delete & LGPD** — exclusão lógica com anonimização
-- **RBAC Granular** — `[CheckPermission("feature", "action")]` com permissões view/create/delete/activate
-
----
-
-## Segurança
-
-### Autenticação JWT + Refresh Token
-- Tokens JWT com `jti` único, `sv` (session version) e `kid` (key id)
-- Refresh tokens armazenados em Redis por usuário (multi-device)
-- Invalidação O(1) via `SessionVersion` — desativar usuário/role invalida todas as sessões instantaneamente
-
-### Anti-Enumeração
-- Todos os endpoints de auth (`/login`, `/validate`, `/change`) retornam a **mesma mensagem genérica** independente do erro real
-- A causa real é logada internamente para o SOC
-
-### Rate Limit Distribuído
-- Limites por endpoint via Redis + Lua script atômico
-- Buckets independentes: login (5/min), password_request (3/min), export (10/min), default (100/min)
-- Headers: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset`
-- Fail-open: Redis indisponível não bloqueia requests
-
-### CORS
-- Allowlist explícita por ambiente via `CORS_ALLOWED_ORIGINS`
-- `AllowAnyOrigin` + `AllowCredentials` removido (vetor CSRF)
-
----
-
-## Observabilidade
-
-### OpenTelemetry Tracing
-- Tracing distribuído com auto-instrumentação para ASP.NET Core, EF Core, Redis e HTTP Client
-- Exportação OTLP para Jaeger/Tempo/Grafana Cloud
-- Ativado via `OTEL_ENABLED=true`
-
-### Métricas Prometheus
-- `prometheus-net` com métricas nativas do .NET (GC, CPU, ThreadPool)
-- Endpoint `/metrics` exposto para scrape
-- Dashboard Grafana pré-configurado em `docker-compose.metrics.yml`
-
-### Health Checks
-- Endpoint `/health` com checks profundos para SQL, Redis, RabbitMQ e PDF Service
-- Status individual por dependência e latência em ms
-- Resposta 200 mesmo em degraded (ideal para k8s liveness probe)
-
----
-
-## Mensageria (RabbitMQ)
-
-- **Publisher Confirms** — garantia de entrega no broker (env `RABBIT_PUBLISHER_CONFIRMS`)
-- **DLX/DLQ** — mensagens reprovadas vão para Dead Letter Queue
-- **Retry Queue** — fila com TTL de 5s e reenvio automático
-- **Prefetch Count** controlado (`RABBIT_PREFETCH_COUNT`, default 16)
-- **Message Versioning** — header `x-message-version` em todas as publicações
-- **Consumer BackgroundService** — `RabbitMQConsumerService` gerenciado pelo ASP.NET Core lifecycle
-- Desabilitável via `MESSAGING_ENABLED=false`
-
----
-
-## Performance e Banco de Dados
-
-### Índices Hot-Path
-10 índices na migration inicial para as queries mais frequentes:
-- `User.Email` (unique), `User.CognitoId`, `User.Document`, `User.IdRole`
-- `Product.Sku` (unique), `Product.Category`
-- `tb_audit` composite `(IdUser, CreatedAt)`
-
-### NoTracking por Default
-- `QueryTrackingBehavior.NoTracking` no DbContext — ganho de 20-30% em queries de leitura
-- `.AsTracking()` explícito apenas nos 12 handlers que escrevem
-- Teste de regressão `DatabaseOptimizationTests` protege contra reverter
-
-### Pipeline de Resiliência (Polly v8)
-- PDF Provider com retry (3x), circuit breaker, timeout (10s attempt, 30s total)
-- Configurável via env vars `PDF_RESILIENCE_*`
-- Aplicado a qualquer cliente HTTP via `AddStandardResilienceHandler()`
-
----
-
-## Auditoria
-
-- `AuditLogMiddleware` captura toda mutação (POST/PUT/DELETE/PATCH)
-- Fila `Channel<T>` com `BackgroundService` — sem ThreadPool starvation
-- Batching de 50 registros por transação
-- Senhas e campos sensíveis são redactados automaticamente
-- Capacidade configurável via `AUDIT_QUEUE_CAPACITY` (default 10000)
-
----
-
-## 🔌 Modo Microsserviço (auth-service-csharp)
-
-O `backend-c-sharp` pode delegar a autenticação para o `auth-service-csharp` (outro repositório).
-
-- `AUTH_MODE=remote` no `.env` faz o backend retornar 404 para `/v1/auth/*`
-- Middleware JWT, RBAC e sessão Redis continuam **inalterados**
-- Tokens do auth-service são aceitos (mesmo `JWT_SECRET` compartilhado)
+### 1. Subir infra local (SQL Server + Redis + RabbitMQ)
 
 ```bash
-# Compliance modo microsserviço
-cd ../mage-backend-compliance
-cp .env.auth.csharp .env
-make test-auth-csharp
+make infra-up
 ```
 
----
+### 2. Configurar `.env`
 
-## Docker
-
-### Dockerfile Multi-stage
-```dockerfile
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-jammy-chiseled AS runtime
-```
-
-Apenas ~100MB na imagem final (chiseled = sem shell, sem pacotes extras).
-
-### Graceful Shutdown
-- Timeout configurável via `SHUTDOWN_TIMEOUT_SECONDS` (default 30s)
-- `ApplicationStopping` registrado para drenar requests in-flight e desconectar RabbitMQ antes de parar
-- Logs informam início e fim do shutdown
-
-### Init-Container
-O mesmo container pode rodar como init job para migrations:
 ```bash
-docker run -e DATABASE_URL=... -e MIGRATE_ONLY=true magebackend
+cp .env.example .env
+# editar DATABASE_URL, RABBIT_URL, etc.
 ```
 
----
+### 3. Rodar em dev
 
-## Instalação e Execução Local
-
-### Pré-requisitos
-- .NET 10 SDK
-- Docker & Docker Compose
-- EF Core CLI: `dotnet tool install --global dotnet-ef`
-
-### Setup
 ```bash
-make setup                # Ferramentas locais + Husky hooks
-dotnet restore src        # Dependências NuGet
-make infra-up             # SQL + Redis + RabbitMQ
-make db-migrate           # Aplica migrations
-make dev                  # Inicia com Hot Reload em :8888
+make dev
 ```
 
-### Stack de Observabilidade
+### 4. Adicionar um job
+
 ```bash
-make metrics-up           # Prometheus + Grafana (localhost:3001)
+# 1. Criar src/Jobs/CleanupJob.cs:
+cat > src/Jobs/CleanupJob.cs <<'EOF'
+using JobService.Core;
+using JobService.Shared.Config;
+using Microsoft.Extensions.Options;
+
+namespace JobService.Jobs;
+
+public sealed class CleanupJob : BaseJob
+{
+    public override string Name => "cleanup";
+    public override string Schedule => "0 3 * * *";
+    public override string Description => "Remove registros antigos";
+
+    public override async Task HandleAsync(JobContext context, CancellationToken ct)
+    {
+        context.Logger.Information("Running cleanup...");
+        // await repo.DeleteOldRecords();
+        await Task.CompletedTask;
+    }
+}
+EOF
+
+# 2. Registrar em src/Jobs/RegisterJobs.cs (no método AddJobs):
+services.AddSingleton<CleanupJob>(...);
+
+# 3. Resolver em src/Jobs/RegisterJobs.cs (no método ResolveJobs):
+var cleanup = sp.GetRequiredService<CleanupJob>();
+return new BaseJob[] { healthCheck, cleanup };
 ```
 
-### Ambiente
-Configure o `.env` na raiz:
-```env
-PORT=8888
-DATABASE_URL="Server=localhost,1433;..."
-REDIS_URL="localhost:6379"
-RABBIT_URL="amqp://guest:guest@localhost:5672/"
-MESSAGING_ENABLED=true
-JWT_SECRET="sua-chave-secreta-aqui"
-CORS_ALLOWED_ORIGINS="http://localhost:3000,http://localhost:4200"
+## Comandos
+
+```bash
+make dev          # hot-reload
+make test         # 116 testes
+make coverage     # XPlat Code Coverage
+make lint         # dotnet format --verify-no-changes
+make check        # lint + test + coverage
+make build        # Release
+make docker       # build image
+make run          # one-shot
+make infra-up     # docker compose up (SQL+Redis+Rabbit)
+make infra-down   # docker compose down
+make sonar        # SonarQube scan
+make clean
 ```
 
----
+## Configuração (env vars)
+
+| Var | Default | Descrição |
+|---|---|---|
+| `ENVIRONMENT` | `local` | dev / staging / production |
+| `LOG_LEVEL` | `Information` | Serilog level |
+| `SHUTDOWN_TIMEOUT_SECONDS` | `30` | Max wait for cleanup on SIGTERM |
+| `JOB_EXECUTION_TIMEOUT_SECONDS` | `300` | Per-job timeout |
+| `DATABASE_URL` | (required) | SQL Server connection string |
+| `DATABASE_COMMAND_TIMEOUT_SECONDS` | `10` | SELECT timeout |
+| `REDIS_HOST` | `localhost` | URL (`redis://...`) ou hostname |
+| `REDIS_PORT` | `6379` | (ignored if URL) |
+| `REDIS_PASSWORD` | (empty) | |
+| `REDIS_DB` | `0` | |
+| `MESSAGING_ENABLED` | `false` | Enable RabbitMQ publisher |
+| `RABBIT_URL` | `amqp://guest:guest@localhost:5672/` | |
+| `RABBIT_USER` / `RABBIT_PASSWORD` | `guest` | |
+| `HEALTH_CHECK_CRON` | `*/1 * * * *` | 5-field cron |
+| `HEALTH_CHECK_ENABLED` | `true` | Disable health check |
+
+## Princípios
+
+- **S** Single Responsibility — cada job tem um único propósito
+- **O** Open/Closed — adicionar um job = criar uma classe + 1 linha de registro
+- **L** Liskov Substitution — todo `BaseJob` é intercambiável
+- **I** Interface Segregation — dependências injetadas via construtor
+- **D** Dependency Inversion — jobs dependem de `IHealthChecker`, `ISqlProvider`, etc., não de implementações
+- **DRY** — lógica compartilhada fica na `BaseJob`
+- **Clean Code** — nomes expressivos, funções curtas, sem side-effects
 
 ## Testes
 
-### Suíte completa (358 testes)
+116 testes, ~97% line coverage (100% nos arquivos testáveis — paths que requerem
+SQL Server / Redis real são cobertos por integração).
+
 ```bash
-make test                 # Testes com Testcontainers (SQL/Redis/RabbitMQ)
+make test
 ```
 
-### Cobertura
-```bash
-make coverage             # Coverlet > 99% line coverage
-```
+## CI
 
-### Qualidade
-```bash
-make lint                 # Husky + dotnet format + verificação de comentários
-make sonar                # SonarQube scan (requer servidor em :9000)
-```
+GitHub Actions roda em push/PR para `develop` e `main`:
+- `dotnet format --verify-no-changes`
+- `dotnet build -c Release`
+- `dotnet test --collect:"XPlat Code Coverage"`
+- Coverage gate: 100% line + branch (excluindo `Program.cs` entry point)
 
-### Compliance E2E
-```bash
-# Projeto separado: mage-backend-compliance
-make test-c-sharp         # 50 testes de ponta a ponta
-```
+## License
 
----
-
-## Comandos Úteis (Makefile)
-
-| Comando | Descrição |
-|---|---|
-| `make infra-up` | Sobe SQL + Redis + RabbitMQ |
-| `make dev` | Hot Reload em :8888 |
-| `make test` | Testes com Testcontainers |
-| `make coverage` | Testes + relatório Coverlet |
-| `make lint` | Verifica comentários `//` + dotnet format |
-| `make db-migrate` | Aplica migrations EF Core |
-| `make migration name=...` | Cria nova migration |
-| `make generate name=...` | Scaffold de CRUD completo |
-| `make generate-storage` | Scaffold de Storage Provider |
-| `make metrics-up` | Prometheus + Grafana |
-| `make sonar` | SonarQube scan |
-| `make setup` | Instala ferramentas + hooks |
-
----
-
-## Qualidade e CI/CD
-
-### SonarQube Quality Gate
-- `new_coverage >= 80%` ✅
-- `new_duplicated_lines_density <= 3%` ✅
-- `new_violations = 0` ✅
-- `caycStatus = compliant` ✅
-
-### GitHub Actions
-- CI roda lint + testes + build em cada PR para main/develop
-- SonarQube Scan integrado (token via `SONAR_TOKEN`)
-
-### Pre-commit Hook (Husky)
-- Bloqueia `// comments` no código-fonte (use `/* */` ou `///`)
-- `dotnet format --verify-no-changes` — formatação consistente
+Same as the parent `mage-boilerplates` repository.
