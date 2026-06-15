@@ -51,9 +51,9 @@ public class RabbitMqProviderTests
     {
         var settings = Options.Create(new AppSettings
         {
-            RabbitUrl = "amqp://user:pass@host:5672/",
-            RabbitUser = "user",
-            RabbitPassword = "pass",
+            RabbitUrl = BuildAmqpHost("h", 5672),
+            RabbitUser = "u",
+            RabbitPassword = "p",
         });
         var provider = new RabbitMqProvider(settings, NullLogger<RabbitMqProvider>.Instance);
         provider.Should().NotBeNull();
@@ -64,13 +64,16 @@ public class RabbitMqProviderTests
     {
         var settings = Options.Create(new AppSettings
         {
-            RabbitUrl = "amqp://guest:guest@host:5672/",
+            RabbitUrl = BuildAmqpHost("h", 5672),
             RabbitUser = "",
             RabbitPassword = "",
         });
         var provider = new RabbitMqProvider(settings, NullLogger<RabbitMqProvider>.Instance);
         provider.Should().NotBeNull();
     }
+
+    private static string BuildAmqpHost(string host, int port)
+        => $"amqp://{host}:{port}/";
 
     [Fact]
     public void Dispose_Can_Be_Called_Multiple_Times()
